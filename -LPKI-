@@ -1,0 +1,307 @@
+const express = require("express");
+const OpenAI = require("openai");
+
+const app = express();
+
+app.use(express.json());
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// =========================
+// DEINE KI-WEBSEITE
+// =========================
+
+const html = `
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>L-Ki – Meine KI</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0d1117;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  padding: 22px;
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  border-bottom: 1px solid #30363d;
+}
+
+#chat {
+  max-width: 800px;
+  margin: auto;
+  padding: 20px;
+  padding-bottom: 100px;
+}
+
+.message {
+  padding: 15px;
+  margin: 12px 0;
+  border-radius: 15px;
+  max-width: 85%;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.user {
+  background: #238636;
+  margin-left: auto;
+}
+
+.ai {
+  background: #21262d;
+  margin-right: auto;
+}
+
+.input-area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #161b22;
+  padding: 15px;
+  display: flex;
+  gap: 10px;
+  border-top: 1px solid #30363d;
+}
+
+input {
+  flex: 1;
+  padding: 15px;
+  border-radius: 12px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: white;
+  font-size: 16px;
+  outline: none;
+}
+
+button {
+  padding: 15px 20px;
+  border: none;
+  border-radius: 12px;
+  background: #238636;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+</style>
+</head>
+
+<body>
+
+<header>
+🤖 L-Ki
+</header>
+
+<div id="chat">
+
+<div class="message ai">
+Hallo! 👋
+Ich bin L-Ki, deine eigene künstliche Intelligenz.
+Wie kann ich dir helfen?
+</div>
+
+</div>
+
+<div class="input-area">
+
+<input
+  id="message"
+  type="text"
+  placeholder="Schreibe deine Frage..."
+  autocomplete="off"
+/>
+
+<button onclick="sendMessage()">
+Senden
+</button>
+
+</div>
+
+<script>
+
+async function sendMessage() {
+
+  const input = document.getElementById("message");
+  const chat = document.getElementById("chat");
+
+  const message = input.value.trim();
+
+  if (!message) return;
+
+  // Nachricht des Benutzers anzeigen
+  const userMessage = document.createElement("div");
+  userMessage.className = "message user";
+  userMessage.textContent = message;
+
+  chat.appendChild(userMessage);
+
+  input.value = "";
+
+  // Ladeanzeige
+  const aiMessage = document.createElement("div");
+  aiMessage.className = "message ai";
+  aiMessage.textContent = "L-Ki denkt... 🤔";
+
+  chat.appendChild(aiMessage);
+
+  window.scrollTo(0, document.body.scrollHeight);
+
+  try {
+
+    const response = await fetch("/api/chat", {
+
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        message: message
+      })
+
+    });
+
+    const data = await response.json();
+
+    if (data.answer) {
+
+      aiMessage.textContent = data.answer;
+
+    } else {
+
+      aiMessage.textContent =
+        "Entschuldigung, es ist ein Fehler aufgetreten.";
+
+    }
+
+  } catch (error) {
+
+    console.error(error);
+
+    aiMessage.textContent =
+      "❌ Verbindung zur KI fehlgeschlagen.";
+
+  }
+
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+
+// Enter-Taste funktioniert ebenfalls
+document
+  .getElementById("message")
+  .addEventListener("keydown", function(event) {
+
+    if (event.key === "Enter") {
+      sendMessage();
+    }
+
+  });
+
+</script>
+
+</body>
+</html>
+`;
+
+// =========================
+// STARTSEITE
+// =========================
+
+app.get("/", (req, res) => {
+  res.send(html);
+});
+
+// =========================
+// KI
+// =========================
+
+app.post("/api/chat", async (req, res) => {
+
+  try {
+
+    const message = req.body.message;
+
+    if (!message) {
+
+      return res.status(400).json({
+        error: "Keine Nachricht erhalten."
+      });
+
+    }
+
+    const response = await client.responses.create({
+
+      model: "gpt-5.6-luna",
+
+      instructions: `
+Du bist L-Ki, eine freundliche und hilfreiche künstliche Intelligenz.
+
+Du antwortest standardmäßig auf Deutsch.
+
+Deine Antworten sollen:
+- verständlich sein
+- hilfreich sein
+- ehrlich sein
+- keine erfundenen Fakten als Wahrheit darstellen
+- bei schwierigen Fragen verständlich erklären
+
+Wenn der Benutzer eine andere Sprache verwendet,
+kannst du auch in dieser Sprache antworten.
+`,
+
+      input: message
+
+    });
+
+    res.json({
+      answer: response.output_text
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      error: "KI-Fehler"
+    });
+
+  }
+
+});
+
+// =========================
+// SERVER STARTEN
+// =========================
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+
+  console.log(
+    "🤖 L-Ki läuft auf Port " + PORT
+  );
+
+});
